@@ -1,0 +1,43 @@
+body {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    background-image: linear-gradient(
+        to bottom, 
+        white 10%, 
+        black 30%, 
+        black 70%, 
+        white 90%
+    );
+    height: 100svh;
+    width: 100svw;
+    margin: 0;
+    gap: 1px;
+}
+
+body > div {
+    background-color: white;
+}
+
+.left-half {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    align-content: center;
+    justify-content: center;
+    font-size: 3rem;
+    font-weight: bold;
+}
+
+#digital-clock, #weekday, #date {
+    margin: 0.2rem 0;
+}
+
+.weekday { 
+    color: #555; 
+    text-transform: capitalize; 
+}
+
+.date { 
+    color: #888; 
+    font-size: 2.5rem !important; 
+}
