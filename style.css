@@ -28,6 +28,10 @@ body > div {
     font-weight: bold;
 }
 
+#hour-hand, #minute-hand, #second-hand {
+    transition: transform 0.5s cubic-bezier(0.4, 2.08, 0.55, 0.44);
+}
+
 #digital-clock, #weekday, #date {
     margin: 0.2rem 0;
 }
