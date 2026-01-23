@@ -96,89 +96,127 @@ function handleSignoutClick() {
   }
 }
 
-/**
- * Print the summary and start datetime/date of the next ten events in
- * the authorized user's calendar. If no events are found an
- * appropriate message is printed.
- */
 async function listUpcomingEvents() {
-  let response;
   try {
-    const request = {
+    const response = await gapi.client.calendar.events.list({
       calendarId: "primary",
       timeMin: new Date().toISOString(),
       showDeleted: false,
       singleEvents: true,
-      maxResults: 10,
+      maxResults: 15,
       orderBy: "startTime",
-    };
-    response = await gapi.client.calendar.events.list(request);
-  } catch (err) {
-    document.getElementById("content").innerText = err.message;
-    return;
-  }
+    });
 
-  const events = response.result.items;
-  if (!events || events.length == 0) {
-    document.getElementById("content").innerText = "No events found.";
-    return;
+    const events = response.result.items || [];
+    const { allDay, timed } = splitEvents(events);
+
+    renderAllDayEvents(allDay);
+    renderTimedEvents(timed);
+  } catch (err) {
+    console.error("Calendar Error:", err);
   }
-  // Flatten to string to display
-  const output = events.reduce(
-    (str, event) =>
-      `${str}${event.summary} (${event.start.dateTime || event.start.date})\n`,
-    "Events:\n"
-  );
-  document.getElementById("content").innerText = output;
+}
+
+function splitEvents(events) {
+  return {
+    allDay: events.filter((e) => e.start.date && !e.start.dateTime),
+    timed: events.filter((e) => e.start.dateTime),
+  };
+}
+
+function renderAllDayEvents(events) {
+  const container = document.getElementById("daily-content");
+  const template = document.getElementById("all-day-template");
+  container.innerHTML = ""; // Clear previous
+
+  events.forEach((event) => {
+    const clone = template.content.cloneNode(true);
+    clone.querySelector(".event-title").innerText = event.summary;
+    container.appendChild(clone);
+  });
+}
+
+function renderTimedEvents(events) {
+  const container = document.getElementById("event-content");
+  const template = document.getElementById("timed-template");
+  container.innerHTML = ""; // Clear previous
+
+  events.forEach((event) => {
+    const clone = template.content.cloneNode(true);
+
+    // Format times to HH:mm
+    const start = new Date(event.start.dateTime).toLocaleTimeString("nl-NL", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+    const end = new Date(event.end.dateTime).toLocaleTimeString("nl-NL", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    clone.querySelector(".event-title").innerText = event.summary;
+    clone.querySelector(".event-time").innerText = `${start} - ${end}`;
+
+    container.appendChild(clone);
+  });
 }
 
 function moveHand(id, degrees) {
-    const hand = document.getElementById(id);
-    if (!hand) return;
+  const hand = document.getElementById(id);
+  if (!hand) return;
 
-    const targetDeg = (degrees === 0) ? 360 : degrees;
-    console.log(hand, targetDeg)
+  const targetDeg = degrees === 0 ? 360 : degrees;
 
-    hand.setAttribute('transition', 'transform 0.25s cubic-bezier(0.4, 2.08, 0.55, 0.44)');
-    hand.setAttribute('transform', `rotate(${targetDeg} 50 50)`)
+  hand.setAttribute(
+    "transition",
+    "transform 0.25s cubic-bezier(0.4, 2.08, 0.55, 0.44)",
+  );
+  hand.setAttribute("transform", `rotate(${targetDeg} 50 50)`);
 
-    if (degrees === 0) {
-        setTimeout(() => {
-            hand.setAttribute('transition', 'none');
-            hand.setAttribute('transform', 'rotate(0)')
-        }, 300); 
-    }
+  if (degrees === 0) {
+    setTimeout(() => {
+      hand.setAttribute("transition", "none");
+      hand.setAttribute("transform", "rotate(0)");
+    }, 300);
+  }
 }
 
 function updateDigitalInfo(now) {
-    const timeOptions = { hour: '2-digit', minute: '2-digit', hour12: false };
-    const dayOptions = { weekday: 'long' };
-    const dateOptions = { day: 'numeric', month: 'long', year: 'numeric' };
+  const timeOptions = { hour: "2-digit", minute: "2-digit", hour12: false };
+  const dayOptions = { weekday: "long" };
+  const dateOptions = { day: "numeric", month: "long", year: "numeric" };
 
-    document.getElementById('digital-clock').innerText = now.toLocaleTimeString('nl-NL', timeOptions);
+  document.getElementById("digital-clock").innerText = now.toLocaleTimeString(
+    "nl-NL",
+    timeOptions,
+  );
 
-    const dayName = now.toLocaleDateString('nl-NL', dayOptions);
-    document.getElementById('weekday').innerText = dayName.charAt(0).toUpperCase() + dayName.slice(1);
+  const dayName = now.toLocaleDateString("nl-NL", dayOptions);
+  document.getElementById("weekday").innerText =
+    dayName.charAt(0).toUpperCase() + dayName.slice(1);
 
-    document.getElementById('date').innerText = now.toLocaleDateString('nl-NL', dateOptions);
+  document.getElementById("date").innerText = now.toLocaleDateString(
+    "nl-NL",
+    dateOptions,
+  );
 }
 
 function updateClock() {
-    const now = new Date();
-    
-    const seconds = now.getSeconds();
-    const minutes = now.getMinutes();
-    const hours = now.getHours();
+  const now = new Date();
 
-    const secDeg = seconds * 6;
-    const minDeg = minutes * 6 + (seconds * 0.1);
-    const hourDeg = (hours % 12) * 30 + (minutes * 0.5);
+  const seconds = now.getSeconds();
+  const minutes = now.getMinutes();
+  const hours = now.getHours();
 
-    moveHand('second-hand', secDeg);
-    moveHand('minute-hand', minDeg);
-    moveHand('hour-hand', hourDeg);
+  const secDeg = seconds * 6;
+  const minDeg = minutes * 6 + seconds * 0.1;
+  const hourDeg = (hours % 12) * 30 + minutes * 0.5;
 
-    updateDigitalInfo(now);
+  moveHand("second-hand", secDeg);
+  moveHand("minute-hand", minDeg);
+  moveHand("hour-hand", hourDeg);
+
+  updateDigitalInfo(now);
 }
 
 setInterval(updateClock, 1000);

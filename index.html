@@ -1,52 +1,169 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <title>Google Calendar API Quickstart</title>
     <meta charset="utf-8" />
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <div class="left-half">
-        <div id="analog-clock">
-            <svg viewBox="0 0 100 100" width="250" height="250">
-                <circle cx="50" cy="50" r="48" fill="none" stroke="black" stroke-width="2"/>
-                <g id="marks" stroke="black" stroke-width="1">
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(0 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(30 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(60 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(90 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(120 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(150 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(180 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(210 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(240 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(270 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(300 50 50)" />
-                    <line x1="50" y1="5" x2="50" y2="10" transform="rotate(330 50 50)" />
-                </g>
-                <line id="hour-hand" x1="50" y1="50" x2="50" y2="25" stroke="black" stroke-width="3" stroke-linecap="round" />
-                <line id="minute-hand" x1="50" y1="50" x2="50" y2="15" stroke="black" stroke-width="2" stroke-linecap="round" />
-                <line id="second-hand" x1="50" y1="50" x2="50" y2="10" stroke="#e74c3c" stroke-width="1" stroke-linecap="round" />
-                <circle cx="50" cy="50" r="2" fill="black" />
+    <div id="clock-section">
+      <div id="analog-clock">
+        <svg viewBox="0 0 100 100" width="250" height="250">
+          <circle
+            cx="50"
+            cy="50"
+            r="48"
+            fill="none"
+            stroke="black"
+            stroke-width="2"
+          />
+          <g id="marks" stroke="black" stroke-width="1">
+            <line x1="50" y1="5" x2="50" y2="10" transform="rotate(0 50 50)" />
+            <line x1="50" y1="5" x2="50" y2="10" transform="rotate(30 50 50)" />
+            <line x1="50" y1="5" x2="50" y2="10" transform="rotate(60 50 50)" />
+            <line x1="50" y1="5" x2="50" y2="10" transform="rotate(90 50 50)" />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(120 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(150 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(180 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(210 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(240 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(270 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(300 50 50)"
+            />
+            <line
+              x1="50"
+              y1="5"
+              x2="50"
+              y2="10"
+              transform="rotate(330 50 50)"
+            />
+          </g>
+          <line
+            id="hour-hand"
+            x1="50"
+            y1="50"
+            x2="50"
+            y2="25"
+            stroke="black"
+            stroke-width="3"
+            stroke-linecap="round"
+          />
+          <line
+            id="minute-hand"
+            x1="50"
+            y1="50"
+            x2="50"
+            y2="15"
+            stroke="black"
+            stroke-width="2"
+            stroke-linecap="round"
+          />
+          <line
+            id="second-hand"
+            x1="50"
+            y1="50"
+            x2="50"
+            y2="10"
+            stroke="#e74c3c"
+            stroke-width="1"
+            stroke-linecap="round"
+          />
+          <circle cx="50" cy="50" r="2" fill="black" />
         </svg>
+      </div>
+      <div id="textual-section">
+          <span id="digital-clock">hier komt een digitale klok</span>
+          <span id="weekday">hier komt de weekdag te staan</span>
+          <span id="date">hier komt de datum te staan</span>
         </div>
-        <span id="digital-clock">hier komt een digitale klok</span>
-        <span id="weekday">hier komt de weekdag te staan</span>
-        <span id="date">hier komt de datum te staan</span>
     </div>
-    <div class="right-half">
-        <p>Google Calendar API Quickstart</p>
-    
-        Add buttons to initiate auth sequence and sign out
-        <button id="authorize_button" onclick="handleAuthClick()">Authorize</button>
-        <button id="signout_button" onclick="handleSignoutClick()">Sign Out</button>
-    
-        <pre id="content" style="white-space: pre-wrap;"></pre>
+
+    <template id="all-day-template">
+      <div class="event-card all-day">
+        <span class="event-title"></span>
+      </div>
+    </template>
+
+    <template id="timed-template">
+      <div class="event-card timed">
+        <div class="event-info">
+          <span class="event-title"></span>
+          <span class="event-time"></span>
+        </div>
+      </div>
+    </template>
+
+    <div id="daily-section">
+      <div id="daily-content"></div>
+    </div>
+
+    <div id="event-section">
+      <p>Google Calendar API Quickstart</p>
+
+      Add buttons to initiate auth sequence and sign out
+      <button id="authorize_button" onclick="handleAuthClick()">
+        Authorize
+      </button>
+      <button id="signout_button" onclick="handleSignoutClick()">
+        Sign Out
+      </button>
+      <div id="event-content"></div>
     </div>
 
     <script src="config.js"></script>
     <script src="script.js"></script>
-    <script async defer src="https://apis.google.com/js/api.js" onload="gapiLoaded()"></script>
-    <script async defer src="https://accounts.google.com/gsi/client" onload="gisLoaded()"></script>
+    <script
+      async
+      defer
+      src="https://apis.google.com/js/api.js"
+      onload="gapiLoaded()"
+    ></script>
+    <script
+      async
+      defer
+      src="https://accounts.google.com/gsi/client"
+      onload="gisLoaded()"
+    ></script>
   </body>
 </html>
