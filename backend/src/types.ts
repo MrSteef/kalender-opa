@@ -3,6 +3,8 @@ export interface AppConfig {
   port: number;
   appBaseUrl: string;
   stateSecret: string;
+  sessionCookieName: string;
+  sessionCookieMaxAgeDays: number;
   googleClientId: string;
   googleClientSecret: string;
   googleCalendarId: string;
@@ -76,4 +78,14 @@ export interface AdminStatus {
   lastSyncError: string | null;
   syncIntervalMs: number;
   appBaseUrl: string;
+  sessionCookieName: string;
+}
+
+export interface ViewerSessionRecord {
+  sessionId: string;
+  createdAt: string;
+  lastSeenAt: string;
+  tokens: StoredTokens | null;
+  displayCache: DisplayCache | null;
+  syncMeta: SyncMeta | null;
 }

@@ -45,6 +45,8 @@ export function loadConfig(): AppConfig {
     port: integer("PORT", 3000),
     appBaseUrl: normalizeBaseUrl(required("APP_BASE_URL")),
     stateSecret: required("STATE_SECRET"),
+    sessionCookieName: optional("SESSION_COOKIE_NAME", "kalender_opa_session"),
+    sessionCookieMaxAgeDays: integer("SESSION_COOKIE_MAX_AGE_DAYS", 180),
     googleClientId: required("GOOGLE_CLIENT_ID"),
     googleClientSecret: required("GOOGLE_CLIENT_SECRET"),
     googleCalendarId: optional("GOOGLE_CALENDAR_ID", "primary"),

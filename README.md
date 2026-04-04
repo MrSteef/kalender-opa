@@ -7,9 +7,33 @@ A single-repo, single-container Google Calendar display app for a tablet that st
 - Shows **timed events** on the right half.
 - Shows **all-day events / birthdays** on the bottom-left.
 - Shows an **analog clock**, **digital clock**, **weekday**, **date**, and a **Google Calendar connect button** on the top-left.
-- Keeps the Google refresh token on the **server**, not in the tablet browser.
+- Keeps the Google refresh token on the **server**, not in the browser.
+- Uses a **separate server-side session per browser/device**, so one visitor cannot automatically see another visitor's calendar.
 - Serves the frontend and backend from the **same origin**.
 - Runs as a **single Docker container** in production.
+
+## Privacy model
+
+This version is **not** globally connected to one Google account anymore.
+
+Instead:
+
+- every browser/device gets its own long-lived **opaque session cookie**
+- the backend stores that browser's Google refresh token under that session
+- `/api/display` only returns the calendar data that belongs to the current session
+- another visitor on another device starts with an empty session and must connect their own Google account
+
+That means:
+
+- your grandpa's tablet can stay connected to **his** calendar
+- your laptop can connect to **your** calendar
+- the two browsers do **not** share calendar data
+
+Important: for this per-user behavior, keep:
+
+- `GOOGLE_CALENDAR_ID=primary`
+
+That makes Google Calendar resolve to the authenticated user's own primary calendar.
 
 ## Project structure
 
@@ -31,6 +55,7 @@ kalender-opa/
 │       ├── env.ts
 │       ├── google.ts
 │       ├── server.ts
+│       ├── session.ts
 │       ├── state-token.ts
 │       ├── sync.ts
 │       └── types.ts
@@ -54,12 +79,13 @@ kalender-opa/
 - **Backend:** Express + TypeScript
 - **Persistence:** SQLite
 - **Google auth:** server-side OAuth 2.0 authorization code flow
+- **Per-browser identity:** HTTP-only session cookie
 - **Deployment:** one Docker image, one container
 - **Reverse proxy in prod:** your existing nginx
 - **Dev public URL:** `https://kalender-opa.svcode.dev`
 - **Prod public URL:** `https://kalender-opa.stefanveltmaat.com`
 
-The browser never stores the long-lived Google credential. The backend stores the refresh token in SQLite and uses it to fetch calendar data.
+The browser does not store the long-lived Google credential. The backend stores the refresh token in SQLite and uses it to fetch calendar data for that specific browser session.
 
 ## Google Cloud setup
 
@@ -94,17 +120,13 @@ In the same project:
   - dev project: `svcode.dev`
   - prod project: `stefanveltmaat.com`
 
-For scopes, only request:
+For scopes, request:
 
 - `https://www.googleapis.com/auth/calendar.readonly`
-
-That keeps the app read-only.
 
 ### 3. Publish the app
 
 Set the OAuth consent screen publishing status to **In production** once you're ready.
-
-Why this matters: Google testing mode is the classic reason refresh tokens die after 7 days. For the tablet setup you want, do not leave the app in Testing.
 
 ### 4. Create the OAuth client
 
@@ -123,7 +145,7 @@ Use these redirect URIs:
 #### Prod
 - `https://kalender-opa.stefanveltmaat.com/auth/google/callback`
 
-You can also add these JavaScript origins if you want the console entry to be complete:
+Optional JavaScript origins:
 
 #### Dev origin
 - `https://kalender-opa.svcode.dev`
@@ -150,6 +172,7 @@ Important values:
 - `APP_BASE_URL=https://kalender-opa.svcode.dev`
 - `GOOGLE_CLIENT_ID=<dev project web client id>`
 - `GOOGLE_CLIENT_SECRET=<dev project web client secret>`
+- `GOOGLE_CALENDAR_ID=primary`
 
 ### Prod example
 
@@ -164,6 +187,7 @@ Then fill in:
 - `APP_BASE_URL=https://kalender-opa.stefanveltmaat.com`
 - `GOOGLE_CLIENT_ID=<prod project web client id>`
 - `GOOGLE_CLIENT_SECRET=<prod project web client secret>`
+- `GOOGLE_CALENDAR_ID=primary`
 
 ### Environment variable reference
 
@@ -173,9 +197,11 @@ Then fill in:
 | `PORT` | app port, default `3000` |
 | `APP_BASE_URL` | full public URL of the current environment |
 | `STATE_SECRET` | used to sign OAuth state values |
+| `SESSION_COOKIE_NAME` | name of the long-lived browser identity cookie |
+| `SESSION_COOKIE_MAX_AGE_DAYS` | how long the browser identity cookie should live |
 | `GOOGLE_CLIENT_ID` | OAuth client id for the current environment |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret for the current environment |
-| `GOOGLE_CALENDAR_ID` | calendar to display, usually `primary` |
+| `GOOGLE_CALENDAR_ID` | calendar to display; use `primary` for per-user privacy |
 | `DISPLAY_TIME_ZONE` | example: `Europe/Amsterdam` |
 | `DISPLAY_LOCALE` | example: `nl-NL` |
 | `DISPLAY_DAYS_PAST` | how many past days to include |
@@ -217,17 +243,19 @@ Configure the tunnel so requests to that hostname go to:
 
 - `http://localhost:3000`
 
-The Express app will serve both the frontend and the backend on that one origin.
+The Express app serves both the frontend and the backend on that one origin.
 
-### 4. Connect Google Calendar once
+### 4. Connect a browser to Google Calendar
 
 Open:
 
 - `https://kalender-opa.svcode.dev`
 
-Click **Google Kalender koppelen**.
+Click **Deze browser koppelen**.
 
-That stores the refresh token in your SQLite database file and the server starts syncing calendar data.
+That stores the refresh token in your SQLite database file **for that browser session only**.
+
+If you open the same app in another browser or on another device, it will start disconnected and can connect a different Google account.
 
 ## Production deployment on your home server
 
@@ -260,89 +288,55 @@ Use the example in:
 
 - `ops/nginx/kalender-opa.conf.example`
 
-The app itself already serves both frontend and backend, so nginx only needs to reverse proxy the domain to the container port.
+Point nginx at:
 
-### 4. Open the production URL and connect once
+- `http://127.0.0.1:3000`
+
+### 4. Open the site on the tablet
 
 Open:
 
 - `https://kalender-opa.stefanveltmaat.com`
 
-Click **Google Kalender koppelen** once.
+Then click **Deze browser koppelen** once and log in with your grandpa's Google account.
 
-After that, the server keeps using the stored refresh token.
+After that, the tablet keeps presenting its session cookie and the backend keeps using that session's refresh token.
 
-## Useful commands
+## How the session model works
 
-### Dev
+### Session lifecycle
+
+- first visit: backend creates a random session id
+- browser stores it in an **HTTP-only cookie**
+- when the user connects Google, the refresh token is stored under that session id
+- every later API request uses the same cookie
+- the backend returns only that session's cached calendar data
+
+### What happens if cookies are cleared?
+
+If the browser's cookies are cleared, that browser loses its identity and becomes a new viewer. It will need to connect Google again.
+
+That is expected.
+
+### What happens if another person visits the URL?
+
+They get their **own** empty session. They do not see the tablet's calendar unless they are using the exact same browser session cookie.
+
+## Scripts
+
+From the repo root:
+
 ```bash
+npm install
 npm run dev
-```
-
-### Type-check
-```bash
+npm run build
+npm run start
 npm run check
 ```
 
-### Production build
-```bash
-npm run build
-```
+## Notes
 
-### Start built app without Docker
-```bash
-npm start
-```
-
-## Backend routes
-
-### Public API
-- `GET /api/health`
-- `GET /api/display`
-- `GET /api/admin/status`
-- `POST /api/admin/resync`
-
-### OAuth
-- `GET /auth/google/start`
-- `GET /auth/google/callback`
-- `POST /auth/google/disconnect`
-
-## Notes and tradeoffs
-
-### Why one container?
-Because this app is small, same-origin, and family-operated. One image is easier to deploy and easier to debug.
-
-### Why not GitHub Pages?
-Because same-origin plus server-side token storage is simpler and more reliable for this use case.
-
-### Why not browser-side Google tokens?
-Because you do not want the tablet browser to be the thing that carries the long-lived auth state.
-
-### Why SQLite?
-Because this app only needs a small amount of persistent state:
-- refresh token
-- cached display payload
-- sync metadata
-
-SQLite is more than enough.
-
-### Why a full windowed sync instead of a more complex sync-token implementation?
-Because for a single household display app, a periodic read-only fetch over a limited date window is simpler and easier to maintain. If you ever need to optimize later, you can add Calendar incremental sync then.
-
-## First things to test
-
-1. `GET /api/health` returns OK.
-2. `GET /api/admin/status` shows disconnected before Google auth.
-3. Clicking the connect button completes OAuth and redirects back to `/`.
-4. `GET /api/display` starts returning real events.
-5. Restarting the container still shows the calendar without reconnecting.
-6. Refreshing the tablet page does not require logging in again.
-
-## Likely future improvements
-
-- hidden admin mode so the connect/disconnect buttons are less visible
-- full-screen kiosk mode recommendations for the tablet
-- separate calendar selection UI
-- birthday highlighting
-- larger-font display mode for weaker eyesight
-- retry/backoff around sync failures
+- This app is intentionally simple.
+- It uses one backend process to serve both the API and the built frontend.
+- The backend periodically syncs all connected viewer sessions it knows about.
+- The display page itself never talks to Google directly.

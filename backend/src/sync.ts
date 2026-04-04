@@ -10,10 +10,6 @@ import {
   SyncMeta
 } from "./types";
 
-const TOKENS_KEY = "oauth_tokens";
-const DISPLAY_CACHE_KEY = "display_cache";
-const SYNC_META_KEY = "sync_meta";
-
 function addDays(date: Date, days: number): Date {
   const copy = new Date(date);
   copy.setDate(copy.getDate() + days);
@@ -66,7 +62,13 @@ function formatRelativeDay(date: Date, now: Date, locale: string, timeZone: stri
   }).format(date);
 }
 
-function formatRelativeDateString(dateString: string, today: string, tomorrow: string, yesterday: string, locale: string): string {
+function formatRelativeDateString(
+  dateString: string,
+  today: string,
+  tomorrow: string,
+  yesterday: string,
+  locale: string
+): string {
   const words = relativeWords(locale);
 
   if (dateString === today) {
@@ -189,6 +191,21 @@ function normalizeAllDayEvent(
   };
 }
 
+function createEmptyDisplayCache(config: AppConfig, meta?: SyncMeta | null): DisplayCache {
+  return {
+    connected: false,
+    generatedAt: new Date().toISOString(),
+    lastSyncedAt: meta?.lastSyncAt ?? null,
+    lastSyncError: meta?.lastSyncError ?? null,
+    timeZone: config.displayTimeZone,
+    locale: config.displayLocale,
+    windowStart: new Date().toISOString(),
+    windowEnd: new Date().toISOString(),
+    timedEvents: [],
+    allDayEvents: []
+  };
+}
+
 async function fetchEvents(config: AppConfig, tokens: StoredTokens) {
   const auth = createAuthorizedOAuthClient(config, tokens);
   const calendar = google.calendar({ version: "v3", auth });
@@ -225,9 +242,9 @@ async function fetchEvents(config: AppConfig, tokens: StoredTokens) {
   };
 }
 
-export function loadDisplayCache(store: KeyValueStore, config: AppConfig): DisplayCache {
-  const cached = store.getJson<DisplayCache>(DISPLAY_CACHE_KEY);
-  const meta = store.getJson<SyncMeta>(SYNC_META_KEY) ?? {
+export function loadDisplayCache(store: KeyValueStore, config: AppConfig, sessionId: string): DisplayCache {
+  const cached = store.loadDisplayCache(sessionId);
+  const meta = store.loadSyncMeta(sessionId) ?? {
     lastSyncAt: null,
     lastSyncError: null
   };
@@ -235,69 +252,51 @@ export function loadDisplayCache(store: KeyValueStore, config: AppConfig): Displ
   if (cached) {
     return {
       ...cached,
-      lastSyncAt: meta.lastSyncAt,
+      lastSyncedAt: meta.lastSyncAt,
       lastSyncError: meta.lastSyncError
     };
   }
 
-  return {
-    connected: false,
-    generatedAt: new Date().toISOString(),
-    lastSyncedAt: meta.lastSyncAt,
-    lastSyncError: meta.lastSyncError,
-    timeZone: config.displayTimeZone,
-    locale: config.displayLocale,
-    windowStart: new Date().toISOString(),
-    windowEnd: new Date().toISOString(),
-    timedEvents: [],
-    allDayEvents: []
-  };
+  return createEmptyDisplayCache(config, meta);
 }
 
-export function readTokens(store: KeyValueStore): StoredTokens | null {
-  return store.getJson<StoredTokens>(TOKENS_KEY);
+export function readTokens(store: KeyValueStore, sessionId: string): StoredTokens | null {
+  return store.readTokens(sessionId);
 }
 
-export function saveTokens(store: KeyValueStore, tokens: StoredTokens): void {
-  store.setJson(TOKENS_KEY, tokens);
+export function saveTokens(store: KeyValueStore, sessionId: string, tokens: StoredTokens): void {
+  store.saveTokens(sessionId, tokens);
 }
 
-export function clearTokens(store: KeyValueStore): void {
-  store.delete(TOKENS_KEY);
+export function clearTokens(store: KeyValueStore, sessionId: string): void {
+  store.clearTokens(sessionId);
 }
 
-export function clearDisplayCache(store: KeyValueStore): void {
-  store.delete(DISPLAY_CACHE_KEY);
-  store.setJson(SYNC_META_KEY, {
+export function clearDisplayCache(store: KeyValueStore, sessionId: string): void {
+  store.clearDisplayCache(sessionId);
+  store.saveSyncMeta(sessionId, {
     lastSyncAt: null,
     lastSyncError: null
   } satisfies SyncMeta);
 }
 
-let syncInFlight: Promise<void> | null = null;
+const syncInFlight = new Map<string, Promise<void>>();
 
-export async function syncCalendarNow(store: KeyValueStore, config: AppConfig): Promise<void> {
-  if (syncInFlight) {
-    return syncInFlight;
+export async function syncCalendarNow(
+  store: KeyValueStore,
+  config: AppConfig,
+  sessionId: string
+): Promise<void> {
+  const existing = syncInFlight.get(sessionId);
+  if (existing) {
+    return existing;
   }
 
-  syncInFlight = (async () => {
-    const tokens = readTokens(store);
+  const promise = (async () => {
+    const tokens = readTokens(store, sessionId);
     if (!tokens?.refreshToken) {
-      const emptyCache: DisplayCache = {
-        connected: false,
-        generatedAt: new Date().toISOString(),
-        lastSyncedAt: null,
-        lastSyncError: null,
-        timeZone: config.displayTimeZone,
-        locale: config.displayLocale,
-        windowStart: new Date().toISOString(),
-        windowEnd: new Date().toISOString(),
-        timedEvents: [],
-        allDayEvents: []
-      };
-      store.setJson(DISPLAY_CACHE_KEY, emptyCache);
-      store.setJson(SYNC_META_KEY, {
+      store.saveDisplayCache(sessionId, createEmptyDisplayCache(config));
+      store.saveSyncMeta(sessionId, {
         lastSyncAt: null,
         lastSyncError: null
       } satisfies SyncMeta);
@@ -318,10 +317,11 @@ export async function syncCalendarNow(store: KeyValueStore, config: AppConfig): 
         .filter((event): event is DisplayAllDayEvent => event !== null)
         .slice(0, config.maxAllDayEvents);
 
+      const syncedAt = new Date().toISOString();
       const displayCache: DisplayCache = {
         connected: true,
-        generatedAt: new Date().toISOString(),
-        lastSyncedAt: new Date().toISOString(),
+        generatedAt: syncedAt,
+        lastSyncedAt: syncedAt,
         lastSyncError: null,
         timeZone: config.displayTimeZone,
         locale: config.displayLocale,
@@ -331,23 +331,23 @@ export async function syncCalendarNow(store: KeyValueStore, config: AppConfig): 
         allDayEvents
       };
 
-      store.setJson(DISPLAY_CACHE_KEY, displayCache);
-      store.setJson(SYNC_META_KEY, {
-        lastSyncAt: displayCache.lastSyncedAt,
+      store.saveDisplayCache(sessionId, displayCache);
+      store.saveSyncMeta(sessionId, {
+        lastSyncAt: syncedAt,
         lastSyncError: null
       } satisfies SyncMeta);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown sync error";
-      const existing = loadDisplayCache(store, config);
+      const existingDisplay = loadDisplayCache(store, config, sessionId);
 
-      store.setJson(DISPLAY_CACHE_KEY, {
-        ...existing,
+      store.saveDisplayCache(sessionId, {
+        ...existingDisplay,
         connected: true,
         generatedAt: new Date().toISOString()
       } satisfies DisplayCache);
 
-      store.setJson(SYNC_META_KEY, {
-        lastSyncAt: existing.lastSyncedAt,
+      store.saveSyncMeta(sessionId, {
+        lastSyncAt: existingDisplay.lastSyncedAt,
         lastSyncError: message
       } satisfies SyncMeta);
 
@@ -355,9 +355,23 @@ export async function syncCalendarNow(store: KeyValueStore, config: AppConfig): 
     }
   })();
 
+  syncInFlight.set(sessionId, promise);
+
   try {
-    await syncInFlight;
+    await promise;
   } finally {
-    syncInFlight = null;
+    syncInFlight.delete(sessionId);
+  }
+}
+
+export async function syncAllCalendars(store: KeyValueStore, config: AppConfig): Promise<void> {
+  const sessions = store.listSessionsWithTokens();
+
+  for (const session of sessions) {
+    try {
+      await syncCalendarNow(store, config, session.sessionId);
+    } catch (error) {
+      console.error(`Sync failed for session ${session.sessionId}:`, error);
+    }
   }
 }

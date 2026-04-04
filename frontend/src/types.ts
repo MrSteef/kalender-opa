@@ -44,4 +44,5 @@ export interface AdminStatus {
   lastSyncError: string | null;
   syncIntervalMs: number;
   appBaseUrl: string;
+  sessionCookieName: string;
 }

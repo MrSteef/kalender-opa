@@ -6,8 +6,9 @@ import { loadConfig } from "./env";
 import { KeyValueStore } from "./db";
 import { createOAuthClient } from "./google";
 import { createStateToken, verifyStateToken } from "./state-token";
-import { clearDisplayCache, clearTokens, loadDisplayCache, readTokens, saveTokens, syncCalendarNow } from "./sync";
+import { clearDisplayCache, clearTokens, loadDisplayCache, readTokens, saveTokens, syncAllCalendars, syncCalendarNow } from "./sync";
 import { AdminStatus, StoredTokens } from "./types";
+import { ensureViewerSession, setSessionCookie } from "./session";
 
 async function start() {
   const config = loadConfig();
@@ -27,33 +28,38 @@ async function start() {
   const projectRoot = path.resolve(__dirname, "../..");
   const frontendRoot = path.resolve(projectRoot, "frontend");
 
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", (req, res) => {
+    const sessionId = ensureViewerSession(req, res, store, config);
     res.json({
       ok: true,
       env: config.nodeEnv,
-      time: new Date().toISOString()
+      time: new Date().toISOString(),
+      sessionCookieName: config.sessionCookieName,
+      hasSession: Boolean(sessionId)
     });
   });
 
-  app.get("/api/display", async (_req, res) => {
+  app.get("/api/display", async (req, res) => {
+    const sessionId = ensureViewerSession(req, res, store, config);
     res.setHeader("Cache-Control", "no-store");
 
-    const tokens = readTokens(store);
-    if (tokens && !loadDisplayCache(store, config).lastSyncedAt) {
+    const tokens = readTokens(store, sessionId);
+    if (tokens && !loadDisplayCache(store, config, sessionId).lastSyncedAt) {
       try {
-        await syncCalendarNow(store, config);
+        await syncCalendarNow(store, config, sessionId);
       } catch {
         // Keep serving the cached version if sync fails.
       }
     }
 
-    res.json(loadDisplayCache(store, config));
+    res.json(loadDisplayCache(store, config, sessionId));
   });
 
-  app.get("/api/admin/status", (_req, res) => {
+  app.get("/api/admin/status", (req, res) => {
+    const sessionId = ensureViewerSession(req, res, store, config);
     res.setHeader("Cache-Control", "no-store");
-    const tokens = readTokens(store);
-    const display = loadDisplayCache(store, config);
+    const tokens = readTokens(store, sessionId);
+    const display = loadDisplayCache(store, config, sessionId);
 
     const status: AdminStatus = {
       connected: Boolean(tokens?.refreshToken),
@@ -65,18 +71,21 @@ async function start() {
       lastSyncAt: display.lastSyncedAt,
       lastSyncError: display.lastSyncError,
       syncIntervalMs: config.syncIntervalMs,
-      appBaseUrl: config.appBaseUrl
+      appBaseUrl: config.appBaseUrl,
+      sessionCookieName: config.sessionCookieName
     };
 
     res.json(status);
   });
 
-  app.post("/api/admin/resync", async (_req, res) => {
+  app.post("/api/admin/resync", async (req, res) => {
+    const sessionId = ensureViewerSession(req, res, store, config);
+
     try {
-      await syncCalendarNow(store, config);
+      await syncCalendarNow(store, config, sessionId);
       res.json({
         ok: true,
-        display: loadDisplayCache(store, config)
+        display: loadDisplayCache(store, config, sessionId)
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Unknown resync error";
@@ -87,8 +96,9 @@ async function start() {
     }
   });
 
-  app.get("/auth/google/start", (_req, res) => {
-    const state = createStateToken(config.stateSecret);
+  app.get("/auth/google/start", (req, res) => {
+    const sessionId = ensureViewerSession(req, res, store, config);
+    const state = createStateToken(config.stateSecret, sessionId);
     const oauthClient = createOAuthClient(config);
 
     const authUrl = oauthClient.generateAuthUrl({
@@ -105,8 +115,9 @@ async function start() {
   app.get("/auth/google/callback", async (req: Request, res: Response) => {
     const state = String(req.query.state || "");
     const code = String(req.query.code || "");
+    const statePayload = verifyStateToken(state, config.stateSecret);
 
-    if (!verifyStateToken(state, config.stateSecret)) {
+    if (!statePayload) {
       res.status(400).send("Invalid or expired OAuth state.");
       return;
     }
@@ -117,10 +128,11 @@ async function start() {
     }
 
     try {
+      store.ensureSession(statePayload.sessionId);
       const oauthClient = createOAuthClient(config);
       const { tokens } = await oauthClient.getToken(code);
 
-      const existing = readTokens(store);
+      const existing = readTokens(store, statePayload.sessionId);
       const refreshToken = tokens.refresh_token || existing?.refreshToken;
       if (!refreshToken) {
         res.status(400).send("Google did not return a refresh token. Try connecting again.");
@@ -136,8 +148,9 @@ async function start() {
         updatedAt: new Date().toISOString()
       };
 
-      saveTokens(store, storedTokens);
-      await syncCalendarNow(store, config);
+      saveTokens(store, statePayload.sessionId, storedTokens);
+      setSessionCookie(req, res, config, statePayload.sessionId);
+      await syncCalendarNow(store, config, statePayload.sessionId);
 
       res.redirect("/");
     } catch (error) {
@@ -146,9 +159,10 @@ async function start() {
     }
   });
 
-  app.post("/auth/google/disconnect", (_req, res) => {
-    clearTokens(store);
-    clearDisplayCache(store);
+  app.post("/auth/google/disconnect", (req, res) => {
+    const sessionId = ensureViewerSession(req, res, store, config);
+    clearTokens(store, sessionId);
+    clearDisplayCache(store, sessionId);
     res.json({ ok: true });
   });
 
@@ -156,8 +170,9 @@ async function start() {
     const frontendDist = path.resolve(projectRoot, "frontend", "dist");
     app.use(express.static(frontendDist, { index: false }));
 
-    app.get(/^(?!\/api\/|\/auth\/).*/, async (_req, res, next) => {
+    app.get(/^(?!\/api\/|\/auth\/).*/, async (req, res, next) => {
       try {
+        ensureViewerSession(req, res, store, config);
         const html = await fs.readFile(path.join(frontendDist, "index.html"), "utf8");
         res.type("html").send(html);
       } catch (error) {
@@ -186,6 +201,7 @@ async function start() {
 
     app.get(/^(?!\/api\/|\/auth\/).*/, async (req, res, next) => {
       try {
+        ensureViewerSession(req, res, store, config);
         const htmlPath = path.join(frontendRoot, "index.html");
         const template = await fs.readFile(htmlPath, "utf8");
         const html = await vite.transformIndexHtml(req.originalUrl, template);
@@ -206,7 +222,7 @@ async function start() {
     console.log(`kalender-opa listening on ${config.appBaseUrl} (port ${config.port})`);
 
     try {
-      await syncCalendarNow(store, config);
+      await syncAllCalendars(store, config);
     } catch (error) {
       console.error("Initial sync failed:", error);
     }
@@ -214,7 +230,7 @@ async function start() {
 
   const interval = setInterval(async () => {
     try {
-      await syncCalendarNow(store, config);
+      await syncAllCalendars(store, config);
     } catch (error) {
       console.error("Scheduled sync failed:", error);
     }
@@ -228,11 +244,11 @@ async function start() {
     });
   };
 
-  process.on("SIGTERM", shutdown);
   process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
 }
 
-start().catch((error) => {
+void start().catch((error) => {
   console.error(error);
   process.exit(1);
 });

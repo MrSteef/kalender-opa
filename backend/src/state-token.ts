@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 interface StatePayload {
   nonce: string;
   issuedAt: number;
+  sessionId: string;
 }
 
 function base64UrlEncode(value: string): string {
@@ -14,16 +15,14 @@ function base64UrlDecode(value: string): string {
 }
 
 function sign(payloadPart: string, secret: string): string {
-  return crypto
-    .createHmac("sha256", secret)
-    .update(payloadPart)
-    .digest("base64url");
+  return crypto.createHmac("sha256", secret).update(payloadPart).digest("base64url");
 }
 
-export function createStateToken(secret: string): string {
+export function createStateToken(secret: string, sessionId: string): string {
   const payload: StatePayload = {
     nonce: crypto.randomBytes(16).toString("hex"),
-    issuedAt: Date.now()
+    issuedAt: Date.now(),
+    sessionId
   };
 
   const payloadPart = base64UrlEncode(JSON.stringify(payload));
@@ -31,10 +30,14 @@ export function createStateToken(secret: string): string {
   return `${payloadPart}.${signaturePart}`;
 }
 
-export function verifyStateToken(token: string, secret: string, maxAgeMs = 10 * 60 * 1000): boolean {
+export function verifyStateToken(
+  token: string,
+  secret: string,
+  maxAgeMs = 10 * 60 * 1000
+): StatePayload | null {
   const [payloadPart, signaturePart] = token.split(".");
   if (!payloadPart || !signaturePart) {
-    return false;
+    return null;
   }
 
   const expectedSignature = sign(payloadPart, secret);
@@ -42,17 +45,25 @@ export function verifyStateToken(token: string, secret: string, maxAgeMs = 10 * 
   const actualBuffer = Buffer.from(signaturePart, "utf8");
 
   if (expectedBuffer.length !== actualBuffer.length) {
-    return false;
+    return null;
   }
 
   if (!crypto.timingSafeEqual(expectedBuffer, actualBuffer)) {
-    return false;
+    return null;
   }
 
   try {
     const payload = JSON.parse(base64UrlDecode(payloadPart)) as StatePayload;
-    return Date.now() - payload.issuedAt <= maxAgeMs;
+    if (Date.now() - payload.issuedAt > maxAgeMs) {
+      return null;
+    }
+
+    if (!payload.sessionId) {
+      return null;
+    }
+
+    return payload;
   } catch {
-    return false;
+    return null;
   }
 }

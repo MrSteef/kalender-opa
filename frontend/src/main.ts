@@ -161,7 +161,7 @@ function render() {
           </div>
           <div class="status-badges">
             <span class="badge ${adminStatus?.connected ? "connected" : "disconnected"}">
-              ${adminStatus?.connected ? "Google Kalender verbonden" : "Niet verbonden"}
+              ${adminStatus?.connected ? "Google Kalender verbonden voor deze browser" : "Deze browser is niet verbonden"}
             </span>
             ${
               displayData?.lastSyncError
@@ -184,7 +184,7 @@ function render() {
 
         <div class="control-row">
           <a class="primary-button" href="${escapeHtml(connectUrl)}">
-            ${adminStatus?.connected ? "Google Kalender opnieuw koppelen" : "Google Kalender koppelen"}
+            ${adminStatus?.connected ? "Deze browser opnieuw koppelen" : "Deze browser koppelen"}
           </a>
           ${
             adminStatus?.connected
@@ -201,7 +201,7 @@ function render() {
         }
 
         <div class="meta-note">
-          Kalender: <strong>${escapeHtml(adminStatus?.calendarId || "primary")}</strong><br />
+          Kalender voor deze browser: <strong>${escapeHtml(adminStatus?.calendarId || "primary")}</strong><br />
           Laatste succesvolle synchronisatie: <strong>${escapeHtml(lastSyncText)}</strong>
         </div>
       </section>
@@ -331,7 +331,8 @@ function drawHand(
 
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, {
-    cache: "no-store"
+    cache: "no-store",
+    credentials: "same-origin"
   });
 
   if (!response.ok) {
@@ -377,6 +378,7 @@ async function disconnectCalendar() {
   try {
     const response = await fetch("/auth/google/disconnect", {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       }
@@ -407,6 +409,7 @@ async function resyncCalendar() {
   try {
     const response = await fetch("/api/admin/resync", {
       method: "POST",
+      credentials: "same-origin",
       headers: {
         "Content-Type": "application/json"
       }
