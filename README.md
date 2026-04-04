@@ -184,6 +184,7 @@ Then fill in:
 | `MAX_ALL_DAY_EVENTS` | hard cap for all-day list |
 | `SYNC_INTERVAL_MS` | backend sync interval |
 | `DATABASE_PATH` | SQLite file path |
+| `VITE_ALLOWED_HOSTS` | comma-separated hostnames Vite should accept in dev / preview mode |
 
 ## Local development on your laptop
 
@@ -196,7 +197,7 @@ cp .env.development.example .env
 npm install
 ```
 
-Fill in the real dev GCP credentials.
+Fill in the real dev GCP credentials. If you use a tunnel hostname, keep that hostname in `VITE_ALLOWED_HOSTS`.
 
 ### 2. Run the app
 

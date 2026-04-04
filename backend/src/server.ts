@@ -165,12 +165,20 @@ async function start() {
       }
     });
   } else {
-    const { createServer: createViteServer } = await import("vite");
+    const { createServer: createViteServer, loadEnv } = await import("vite");
+    const frontendEnv = loadEnv(config.nodeEnv, frontendRoot, "");
+    const allowedHosts = (frontendEnv.VITE_ALLOWED_HOSTS ?? "kalender-opa.svcode.dev,localhost,127.0.0.1")
+      .split(",")
+      .map((host) => host.trim())
+      .filter(Boolean);
+
     const vite = await createViteServer({
       appType: "spa",
       root: frontendRoot,
       server: {
-        middlewareMode: true
+        middlewareMode: true,
+        host: true,
+        allowedHosts
       }
     });
 
