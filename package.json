@@ -1,0 +1,15 @@
+{
+  "name": "kalender-opa",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "tsx --tsconfig backend/tsconfig.json backend/src/server.ts",
+    "build": "npm run build -w frontend && tsc -p backend/tsconfig.json",
+    "start": "node backend/dist/server.js",
+    "check": "npm run check -w frontend && tsc --noEmit -p backend/tsconfig.json"
+  }
+}

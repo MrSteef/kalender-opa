@@ -1,0 +1,14 @@
+services:
+  kalender-opa:
+    build: .
+    container_name: kalender-opa
+    env_file:
+      - .env
+    ports:
+      - "3000:3000"
+    volumes:
+      - kalender-opa-data:/data
+    restart: unless-stopped
+
+volumes:
+  kalender-opa-data:
