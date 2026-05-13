@@ -8,6 +8,7 @@ export interface DisplayTimedEvent {
   timeLabel: string;
   location?: string;
   isOngoing: boolean;
+  calendarName?: string;
 }
 
 export interface DisplayAllDayEvent {
@@ -18,6 +19,7 @@ export interface DisplayAllDayEvent {
   endDateExclusive: string;
   location?: string;
   spansMultipleDays: boolean;
+  calendarName?: string;
 }
 
 export interface DisplayCache {
@@ -38,6 +40,7 @@ export interface AdminStatus {
   connectUrl: string;
   disconnectUrl: string;
   calendarId: string;
+  calendarSource: "selected" | "single" | "explicit";
   timeZone: string;
   locale: string;
   lastSyncAt: string | null;

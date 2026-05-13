@@ -10,6 +10,17 @@ import {
   SyncMeta
 } from "./types";
 
+interface ResolvedCalendar {
+  id: string;
+  name: string;
+}
+
+interface FetchedEvent {
+  event: calendar_v3.Schema$Event;
+  calendarId: string;
+  calendarName: string;
+}
+
 function addDays(date: Date, days: number): Date {
   const copy = new Date(date);
   copy.setDate(copy.getDate() + days);
@@ -33,6 +44,14 @@ function relativeWords(locale: string) {
 
 function titleOrFallback(summary: string | null | undefined): string {
   return summary?.trim() || "(No title)";
+}
+
+function visibleCalendarName(calendarName: string, config: AppConfig): string | undefined {
+  if (config.googleCalendarSource === "single") {
+    return undefined;
+  }
+
+  return calendarName.trim() || undefined;
 }
 
 function formatRelativeDay(date: Date, now: Date, locale: string, timeZone: string): string {
@@ -102,10 +121,11 @@ function formatTimeLabel(start: Date, end: Date, locale: string, timeZone: strin
 }
 
 function normalizeTimedEvent(
-  event: calendar_v3.Schema$Event,
+  fetchedEvent: FetchedEvent,
   now: Date,
   config: AppConfig
 ): DisplayTimedEvent | null {
+  const { event, calendarName } = fetchedEvent;
   const startIso = event.start?.dateTime;
   const endIso = event.end?.dateTime;
 
@@ -126,7 +146,8 @@ function normalizeTimedEvent(
     dayLabel,
     timeLabel: formatTimeLabel(start, end, config.displayLocale, config.displayTimeZone),
     location: event.location?.trim() || undefined,
-    isOngoing: now >= start && now < end
+    isOngoing: now >= start && now < end,
+    calendarName: visibleCalendarName(calendarName, config)
   };
 }
 
@@ -161,10 +182,11 @@ function formatAllDayDateLabel(
 }
 
 function normalizeAllDayEvent(
-  event: calendar_v3.Schema$Event,
+  fetchedEvent: FetchedEvent,
   now: Date,
   config: AppConfig
 ): DisplayAllDayEvent | null {
+  const { event, calendarName } = fetchedEvent;
   const startDate = event.start?.date;
   const endDateExclusive = event.end?.date;
 
@@ -187,7 +209,8 @@ function normalizeAllDayEvent(
     startDate,
     endDateExclusive,
     location: event.location?.trim() || undefined,
-    spansMultipleDays
+    spansMultipleDays,
+    calendarName: visibleCalendarName(calendarName, config)
   };
 }
 
@@ -206,6 +229,70 @@ function createEmptyDisplayCache(config: AppConfig, meta?: SyncMeta | null): Dis
   };
 }
 
+async function listVisibleCalendars(
+  calendar: calendar_v3.Calendar,
+  config: AppConfig
+): Promise<ResolvedCalendar[]> {
+  if (config.googleCalendarSource === "single") {
+    return [{ id: config.googleCalendarId, name: config.googleCalendarId }];
+  }
+
+  if (config.googleCalendarSource === "explicit") {
+    const ids = config.googleCalendarIds.length ? config.googleCalendarIds : [config.googleCalendarId];
+    return ids.map((id) => ({ id, name: id }));
+  }
+
+  const items: calendar_v3.Schema$CalendarListEntry[] = [];
+  let pageToken: string | undefined;
+
+  do {
+    const response = await calendar.calendarList.list({
+      maxResults: 250,
+      minAccessRole: "reader",
+      showDeleted: false,
+      showHidden: false,
+      pageToken
+    });
+
+    items.push(...(response.data.items || []));
+    pageToken = response.data.nextPageToken || undefined;
+  } while (pageToken);
+
+  const selectedCalendars = items
+    .filter((item) => !item.deleted && !item.hidden && item.selected)
+    .map((item) => ({
+      id: item.id || "primary",
+      name: item.summaryOverride?.trim() || item.summary?.trim() || item.id || "Calendar"
+    }));
+
+  if (selectedCalendars.length > 0) {
+    return selectedCalendars;
+  }
+
+  const primary = items.find((item) => item.primary && item.id);
+  if (primary?.id) {
+    return [{
+      id: primary.id,
+      name: primary.summaryOverride?.trim() || primary.summary?.trim() || primary.id
+    }];
+  }
+
+  return [{ id: config.googleCalendarId, name: config.googleCalendarId }];
+}
+
+function compareTimedEvents(a: DisplayTimedEvent, b: DisplayTimedEvent): number {
+  return new Date(a.startIso).getTime() - new Date(b.startIso).getTime();
+}
+
+function compareAllDayEvents(a: DisplayAllDayEvent, b: DisplayAllDayEvent): number {
+  const start = a.startDate.localeCompare(b.startDate);
+  if (start !== 0) {
+    return start;
+  }
+
+  return a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+}
+
 async function fetchEvents(config: AppConfig, tokens: StoredTokens) {
   const auth = createAuthorizedOAuthClient(config, tokens);
   const calendar = google.calendar({ version: "v3", auth });
@@ -215,28 +302,40 @@ async function fetchEvents(config: AppConfig, tokens: StoredTokens) {
   const windowStartDate = new Date(now.getTime() - config.displayDaysPast * msPerDay);
   const windowEndDate = new Date(now.getTime() + (config.displayDaysFuture + 1) * msPerDay);
 
-  const items: calendar_v3.Schema$Event[] = [];
-  let pageToken: string | undefined;
+  const calendars = await listVisibleCalendars(calendar, config);
+  const items: FetchedEvent[] = [];
 
-  do {
-    const response = await calendar.events.list({
-      calendarId: config.googleCalendarId,
-      singleEvents: true,
-      orderBy: "startTime",
-      timeMin: windowStartDate.toISOString(),
-      timeMax: windowEndDate.toISOString(),
-      timeZone: config.displayTimeZone,
-      maxResults: 2500,
-      showDeleted: false,
-      pageToken
-    });
+  for (const resolvedCalendar of calendars) {
+    let pageToken: string | undefined;
 
-    items.push(...(response.data.items || []));
-    pageToken = response.data.nextPageToken || undefined;
-  } while (pageToken);
+    do {
+      const response = await calendar.events.list({
+        calendarId: resolvedCalendar.id,
+        singleEvents: true,
+        orderBy: "startTime",
+        timeMin: windowStartDate.toISOString(),
+        timeMax: windowEndDate.toISOString(),
+        timeZone: config.displayTimeZone,
+        maxResults: 2500,
+        showDeleted: false,
+        pageToken
+      });
+
+      items.push(
+        ...(response.data.items || []).map((event) => ({
+          event,
+          calendarId: resolvedCalendar.id,
+          calendarName: resolvedCalendar.name
+        }))
+      );
+
+      pageToken = response.data.nextPageToken || undefined;
+    } while (pageToken);
+  }
 
   return {
     items,
+    calendars,
     windowStartIso: windowStartDate.toISOString(),
     windowEndIso: windowEndDate.toISOString()
   };
@@ -310,14 +409,17 @@ export async function syncCalendarNow(
       const timedEvents = items
         .map((event) => normalizeTimedEvent(event, now, config))
         .filter((event): event is DisplayTimedEvent => event !== null)
+        .sort(compareTimedEvents)
         .slice(0, config.maxTimedEvents);
 
       const allDayEvents = items
         .map((event) => normalizeAllDayEvent(event, now, config))
         .filter((event): event is DisplayAllDayEvent => event !== null)
+        .sort(compareAllDayEvents)
         .slice(0, config.maxAllDayEvents);
 
       const syncedAt = new Date().toISOString();
+
       const displayCache: DisplayCache = {
         connected: true,
         generatedAt: syncedAt,

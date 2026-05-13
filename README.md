@@ -6,6 +6,7 @@ A single-repo, single-container Google Calendar display app for a tablet that st
 
 - Shows **timed events** on the right half.
 - Shows **all-day events / birthdays** on the bottom-left.
+- By default, merges events from the calendars that are **selected/visible** for the authenticated Google user.
 - Shows an **analog clock**, **digital clock**, **weekday**, **date**, and a **Google Calendar connect button** on the top-left.
 - Keeps the Google refresh token on the **server**, not in the browser.
 - Uses a **separate server-side session per browser/device**, so one visitor cannot automatically see another visitor's calendar.
@@ -29,11 +30,7 @@ That means:
 - your laptop can connect to **your** calendar
 - the two browsers do **not** share calendar data
 
-Important: for this per-user behavior, keep:
-
-- `GOOGLE_CALENDAR_ID=primary`
-
-That makes Google Calendar resolve to the authenticated user's own primary calendar.
+By default, this build shows the calendars that are **selected/visible** in that user's Google Calendar UI. That means one viewer sees **their own selected calendars**, and another viewer sees **their own selected calendars**.
 
 ## Project structure
 
@@ -172,7 +169,14 @@ Important values:
 - `APP_BASE_URL=https://kalender-opa.svcode.dev`
 - `GOOGLE_CLIENT_ID=<dev project web client id>`
 - `GOOGLE_CLIENT_SECRET=<dev project web client secret>`
+- `GOOGLE_CALENDAR_SOURCE=selected`
 - `GOOGLE_CALENDAR_ID=primary`
+
+Default behavior:
+
+- `GOOGLE_CALENDAR_SOURCE=selected` means: fetch the calendars on the authenticated user's calendar list and include the ones that are marked as selected/visible in Google Calendar.
+- `GOOGLE_CALENDAR_SOURCE=single` means: fetch exactly one calendar, usually `primary`.
+- `GOOGLE_CALENDAR_SOURCE=explicit` means: fetch the comma-separated ids in `GOOGLE_CALENDAR_IDS`.
 
 ### Prod example
 
@@ -187,6 +191,7 @@ Then fill in:
 - `APP_BASE_URL=https://kalender-opa.stefanveltmaat.com`
 - `GOOGLE_CLIENT_ID=<prod project web client id>`
 - `GOOGLE_CLIENT_SECRET=<prod project web client secret>`
+- `GOOGLE_CALENDAR_SOURCE=selected`
 - `GOOGLE_CALENDAR_ID=primary`
 
 ### Environment variable reference
@@ -201,7 +206,9 @@ Then fill in:
 | `SESSION_COOKIE_MAX_AGE_DAYS` | how long the browser identity cookie should live |
 | `GOOGLE_CLIENT_ID` | OAuth client id for the current environment |
 | `GOOGLE_CLIENT_SECRET` | OAuth client secret for the current environment |
-| `GOOGLE_CALENDAR_ID` | calendar to display; use `primary` for per-user privacy |
+| `GOOGLE_CALENDAR_SOURCE` | `selected` (default), `single`, or `explicit` |
+| `GOOGLE_CALENDAR_ID` | calendar to display when `GOOGLE_CALENDAR_SOURCE=single`; fallback value in other modes |
+| `GOOGLE_CALENDAR_IDS` | comma-separated calendar ids when `GOOGLE_CALENDAR_SOURCE=explicit` |
 | `DISPLAY_TIME_ZONE` | example: `Europe/Amsterdam` |
 | `DISPLAY_LOCALE` | example: `nl-NL` |
 | `DISPLAY_DAYS_PAST` | how many past days to include |
@@ -253,7 +260,7 @@ Open:
 
 Click **Deze browser koppelen**.
 
-That stores the refresh token in your SQLite database file **for that browser session only**.
+That stores the refresh token in your SQLite database file **for that browser session only**. After connecting, the backend will read the calendars that are selected/visible for that Google account and merge their events into the display. If you already had the app running with `GOOGLE_CALENDAR_ID=primary`, just restart the server and trigger **Nu synchroniseren** once.
 
 If you open the same app in another browser or on another device, it will start disconnected and can connect a different Google account.
 

@@ -65,7 +65,13 @@ async function start() {
       connected: Boolean(tokens?.refreshToken),
       connectUrl: "/auth/google/start",
       disconnectUrl: "/auth/google/disconnect",
-      calendarId: config.googleCalendarId,
+      calendarId:
+        config.googleCalendarSource === "single"
+          ? config.googleCalendarId
+          : config.googleCalendarSource === "explicit"
+            ? (config.googleCalendarIds.length ? config.googleCalendarIds.join(", ") : config.googleCalendarId)
+            : "selected calendars",
+      calendarSource: config.googleCalendarSource,
       timeZone: config.displayTimeZone,
       locale: config.displayLocale,
       lastSyncAt: display.lastSyncedAt,

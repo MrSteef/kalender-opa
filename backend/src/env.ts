@@ -1,6 +1,6 @@
 import dotenv from "dotenv";
 import path from "node:path";
-import { AppConfig } from "./types";
+import { AppConfig, GoogleCalendarSource } from "./types";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
@@ -34,11 +34,31 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function parseGoogleCalendarSource(value: string): GoogleCalendarSource {
+  if (value === "selected" || value === "single" || value === "explicit") {
+    return value;
+  }
+
+  throw new Error(
+    'GOOGLE_CALENDAR_SOURCE must be one of: "selected", "single", "explicit"'
+  );
+}
+
+function parseList(name: string): string[] {
+  return (process.env[name] ?? "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 export function loadConfig(): AppConfig {
   const nodeEnv = optional("NODE_ENV", "development");
   if (nodeEnv !== "development" && nodeEnv !== "production") {
     throw new Error(`NODE_ENV must be "development" or "production"`);
   }
+
+  const googleCalendarSource = parseGoogleCalendarSource(optional("GOOGLE_CALENDAR_SOURCE", "selected"));
+  const googleCalendarIds = parseList("GOOGLE_CALENDAR_IDS");
 
   return {
     nodeEnv,
@@ -49,7 +69,9 @@ export function loadConfig(): AppConfig {
     sessionCookieMaxAgeDays: integer("SESSION_COOKIE_MAX_AGE_DAYS", 180),
     googleClientId: required("GOOGLE_CLIENT_ID"),
     googleClientSecret: required("GOOGLE_CLIENT_SECRET"),
+    googleCalendarSource,
     googleCalendarId: optional("GOOGLE_CALENDAR_ID", "primary"),
+    googleCalendarIds,
     displayTimeZone: optional("DISPLAY_TIME_ZONE", "Europe/Amsterdam"),
     displayLocale: optional("DISPLAY_LOCALE", "nl-NL"),
     displayDaysPast: integer("DISPLAY_DAYS_PAST", 0),

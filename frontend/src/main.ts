@@ -108,6 +108,7 @@ function renderTimedEvents(events: DisplayTimedEvent[]): string {
                         ? `<div class="event-location">${escapeHtml(event.location)}</div>`
                         : ""
                     }
+                    ${event.calendarName ? `<div class="event-calendar">${escapeHtml(event.calendarName)}</div>` : ""}
                     ${event.isOngoing ? `<div class="event-live">Nu bezig</div>` : ""}
                   </div>
                 </article>
@@ -137,6 +138,7 @@ function renderAllDayEvents(events: DisplayAllDayEvent[]): string {
                 ? `<div class="event-location">${escapeHtml(event.location)}</div>`
                 : ""
             }
+            ${event.calendarName ? `<div class="event-calendar">${escapeHtml(event.calendarName)}</div>` : ""}
           </div>
         </article>
       `
@@ -201,7 +203,7 @@ function render() {
         }
 
         <div class="meta-note">
-          Kalender voor deze browser: <strong>${escapeHtml(adminStatus?.calendarId || "primary")}</strong><br />
+          Kalenders voor deze browser: <strong>${escapeHtml(adminStatus?.calendarId || "selected calendars")}</strong><br />
           Laatste succesvolle synchronisatie: <strong>${escapeHtml(lastSyncText)}</strong>
         </div>
       </section>
