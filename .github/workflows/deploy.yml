@@ -13,7 +13,6 @@ on:
         default: false
 
 env:
-  SSH_PORT: "22"
   SSH_OPTIONS: "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts"
 
 jobs:
@@ -56,6 +55,7 @@ jobs:
         run: |
           test -n "${{ secrets.SSH_HOST }}"
           test -n "${{ secrets.SSH_USER }}"
+          test -n "${{ secrets.SSH_PORT }}"
           test -n "${{ secrets.DEPLOY_DIR }}"
 
       - name: Add host key
@@ -64,11 +64,11 @@ jobs:
           chmod 700 ~/.ssh
           touch ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          ssh-keyscan -p "${{ env.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts || true
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts || true
 
       - name: Ensure remote deploy dir exists and stop old container
         run: |
-          ssh ${{ env.SSH_OPTIONS }} -p "${{ env.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+          ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
             mkdir -p '${{ secrets.DEPLOY_DIR }}';
             cd '${{ secrets.DEPLOY_DIR }}';
             if [ -f docker-compose.yml ]; then
@@ -91,12 +91,12 @@ jobs:
             --exclude 'windows' \
             --exclude 'backend/node_modules' \
             --exclude 'node_modules' \
-            -e "ssh ${{ env.SSH_OPTIONS }} -p ${{ env.SSH_PORT }}" \
+            -e "ssh ${{ env.SSH_OPTIONS }} -p ${{ secrets.SSH_PORT }}" \
             ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_DIR }}/"
 
       - name: Build and restart Docker container on server
         run: |
-          ssh ${{ env.SSH_OPTIONS }} -p "${{ env.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+          ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
             set -euo pipefail
             cd '${{ secrets.DEPLOY_DIR }}'
             cat > .env <<'EOF'
@@ -141,6 +141,7 @@ jobs:
         run: |
           test -n "${{ secrets.SSH_HOST }}"
           test -n "${{ secrets.SSH_USER }}"
+          test -n "${{ secrets.SSH_PORT }}"
           test -n "${{ secrets.DEPLOY_DIR }}"
 
       - name: Add host key
@@ -149,11 +150,11 @@ jobs:
           chmod 700 ~/.ssh
           touch ~/.ssh/known_hosts
           chmod 600 ~/.ssh/known_hosts
-          ssh-keyscan -p "${{ env.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts || true
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts || true
 
       - name: Reset SQLite and restart app
         run: |
-          ssh ${{ env.SSH_OPTIONS }} -p "${{ env.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+          ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
             set -euo pipefail
             cd '${{ secrets.DEPLOY_DIR }}'
             docker compose up -d kalender-opa
