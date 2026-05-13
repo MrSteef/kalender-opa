@@ -53,10 +53,12 @@ jobs:
 
       - name: Validate required SSH secrets
         run: |
-          test -n "${{ secrets.SSH_HOST }}"
-          test -n "${{ secrets.SSH_USER }}"
-          test -n "${{ secrets.SSH_PORT }}"
-          test -n "${{ secrets.DEPLOY_DIR }}"
+          missing=0
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then echo "Missing required secret: SSH_HOST"; missing=1; fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then echo "Missing required secret: SSH_USER"; missing=1; fi
+          if [ -z "${{ secrets.SSH_PORT }}" ]; then echo "Missing required secret: SSH_PORT"; missing=1; fi
+          if [ -z "${{ secrets.DEPLOY_DIR }}" ]; then echo "Missing required secret: DEPLOY_DIR"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
 
       - name: Add host key
         run: |
@@ -99,26 +101,26 @@ jobs:
           ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
             set -euo pipefail
             cd '${{ secrets.DEPLOY_DIR }}'
-            cat > .env <<'EOF'
-            NODE_ENV=production
-            PORT=${{ secrets.PORT }}
-            APP_BASE_URL=${{ secrets.APP_BASE_URL }}
-            STATE_SECRET=${{ secrets.STATE_SECRET }}
-            SESSION_COOKIE_NAME=${{ secrets.SESSION_COOKIE_NAME }}
-            SESSION_COOKIE_MAX_AGE_DAYS=${{ secrets.SESSION_COOKIE_MAX_AGE_DAYS }}
-            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
-            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
-            GOOGLE_CALENDAR_ID=${{ secrets.GOOGLE_CALENDAR_ID }}
-            DISPLAY_TIME_ZONE=${{ secrets.DISPLAY_TIME_ZONE }}
-            DISPLAY_LOCALE=${{ secrets.DISPLAY_LOCALE }}
-            DISPLAY_DAYS_PAST=${{ secrets.DISPLAY_DAYS_PAST }}
-            DISPLAY_DAYS_FUTURE=${{ secrets.DISPLAY_DAYS_FUTURE }}
-            MAX_TIMED_EVENTS=${{ secrets.MAX_TIMED_EVENTS }}
-            MAX_ALL_DAY_EVENTS=${{ secrets.MAX_ALL_DAY_EVENTS }}
-            SYNC_INTERVAL_MS=${{ secrets.SYNC_INTERVAL_MS }}
-            VITE_ALLOWED_HOSTS=${{ secrets.VITE_ALLOWED_HOSTS }}
-            DATABASE_PATH=${{ secrets.DATABASE_PATH }}
-            EOF
+            {
+              printf '%s\n' 'NODE_ENV=production'
+              printf '%s\n' 'PORT=${{ secrets.PORT }}'
+              printf '%s\n' 'APP_BASE_URL=${{ secrets.APP_BASE_URL }}'
+              printf '%s\n' 'STATE_SECRET=${{ secrets.STATE_SECRET }}'
+              printf '%s\n' 'SESSION_COOKIE_NAME=${{ secrets.SESSION_COOKIE_NAME }}'
+              printf '%s\n' 'SESSION_COOKIE_MAX_AGE_DAYS=${{ secrets.SESSION_COOKIE_MAX_AGE_DAYS }}'
+              printf '%s\n' 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}'
+              printf '%s\n' 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}'
+              printf '%s\n' 'GOOGLE_CALENDAR_ID=${{ secrets.GOOGLE_CALENDAR_ID }}'
+              printf '%s\n' 'DISPLAY_TIME_ZONE=${{ secrets.DISPLAY_TIME_ZONE }}'
+              printf '%s\n' 'DISPLAY_LOCALE=${{ secrets.DISPLAY_LOCALE }}'
+              printf '%s\n' 'DISPLAY_DAYS_PAST=${{ secrets.DISPLAY_DAYS_PAST }}'
+              printf '%s\n' 'DISPLAY_DAYS_FUTURE=${{ secrets.DISPLAY_DAYS_FUTURE }}'
+              printf '%s\n' 'MAX_TIMED_EVENTS=${{ secrets.MAX_TIMED_EVENTS }}'
+              printf '%s\n' 'MAX_ALL_DAY_EVENTS=${{ secrets.MAX_ALL_DAY_EVENTS }}'
+              printf '%s\n' 'SYNC_INTERVAL_MS=${{ secrets.SYNC_INTERVAL_MS }}'
+              printf '%s\n' 'VITE_ALLOWED_HOSTS=${{ secrets.VITE_ALLOWED_HOSTS }}'
+              printf '%s\n' 'DATABASE_PATH=${{ secrets.DATABASE_PATH }}'
+            } > .env
             docker compose up -d --build --remove-orphans
           "
 
@@ -139,10 +141,12 @@ jobs:
 
       - name: Validate required SSH secrets
         run: |
-          test -n "${{ secrets.SSH_HOST }}"
-          test -n "${{ secrets.SSH_USER }}"
-          test -n "${{ secrets.SSH_PORT }}"
-          test -n "${{ secrets.DEPLOY_DIR }}"
+          missing=0
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then echo "Missing required secret: SSH_HOST"; missing=1; fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then echo "Missing required secret: SSH_USER"; missing=1; fi
+          if [ -z "${{ secrets.SSH_PORT }}" ]; then echo "Missing required secret: SSH_PORT"; missing=1; fi
+          if [ -z "${{ secrets.DEPLOY_DIR }}" ]; then echo "Missing required secret: DEPLOY_DIR"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
 
       - name: Add host key
         run: |
