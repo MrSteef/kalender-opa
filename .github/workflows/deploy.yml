@@ -1,0 +1,167 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_dispatch:
+    inputs:
+      reset_database:
+        description: "Reset SQLite database and redeploy"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  SSH_OPTIONS: "-o StrictHostKeyChecking=accept-new -o UserKnownHostsFile=~/.ssh/known_hosts"
+
+jobs:
+  build:
+    if: github.ref_name == github.event.repository.default_branch && (github.event_name != 'workflow_dispatch' || inputs.reset_database != true)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build app
+        run: npm run build
+
+  deploy_app:
+    if: github.ref_name == github.event.repository.default_branch && (github.event_name != 'workflow_dispatch' || inputs.reset_database != true)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SSH tools
+        run: sudo apt-get update && sudo apt-get install -y rsync openssh-client
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Validate required SSH secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then echo "Missing required secret: SSH_HOST"; missing=1; fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then echo "Missing required secret: SSH_USER"; missing=1; fi
+          if [ -z "${{ secrets.SSH_PORT }}" ]; then echo "Missing required secret: SSH_PORT"; missing=1; fi
+          if [ -z "${{ secrets.DEPLOY_DIR }}" ]; then echo "Missing required secret: DEPLOY_DIR"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
+      - name: Add host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts || true
+
+      - name: Ensure remote deploy dir exists and stop old container
+        run: |
+          ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+            mkdir -p '${{ secrets.DEPLOY_DIR }}';
+            cd '${{ secrets.DEPLOY_DIR }}';
+            if [ -f docker-compose.yml ]; then
+              docker compose down --remove-orphans || true;
+            fi
+          "
+
+      - name: Sync repository to remote server
+        run: |
+          rsync -az --delete \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.idea' \
+            --exclude '.dart_tool' \
+            --exclude 'build' \
+            --exclude 'android' \
+            --exclude 'ios' \
+            --exclude 'linux' \
+            --exclude 'macos' \
+            --exclude 'windows' \
+            --exclude 'backend/node_modules' \
+            --exclude 'node_modules' \
+            -e "ssh ${{ env.SSH_OPTIONS }} -p ${{ secrets.SSH_PORT }}" \
+            ./ "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:${{ secrets.DEPLOY_DIR }}/"
+
+      - name: Build and restart Docker container on server
+        run: |
+          ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+            set -euo pipefail
+            cd '${{ secrets.DEPLOY_DIR }}'
+            {
+              printf '%s\n' 'NODE_ENV=production'
+              printf '%s\n' 'PORT=${{ secrets.PORT }}'
+              printf '%s\n' 'APP_BASE_URL=${{ secrets.APP_BASE_URL }}'
+              printf '%s\n' 'STATE_SECRET=${{ secrets.STATE_SECRET }}'
+              printf '%s\n' 'SESSION_COOKIE_NAME=${{ secrets.SESSION_COOKIE_NAME }}'
+              printf '%s\n' 'SESSION_COOKIE_MAX_AGE_DAYS=${{ secrets.SESSION_COOKIE_MAX_AGE_DAYS }}'
+              printf '%s\n' 'GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}'
+              printf '%s\n' 'GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}'
+              printf '%s\n' 'GOOGLE_CALENDAR_ID=${{ secrets.GOOGLE_CALENDAR_ID }}'
+              printf '%s\n' 'DISPLAY_TIME_ZONE=${{ secrets.DISPLAY_TIME_ZONE }}'
+              printf '%s\n' 'DISPLAY_LOCALE=${{ secrets.DISPLAY_LOCALE }}'
+              printf '%s\n' 'DISPLAY_DAYS_PAST=${{ secrets.DISPLAY_DAYS_PAST }}'
+              printf '%s\n' 'DISPLAY_DAYS_FUTURE=${{ secrets.DISPLAY_DAYS_FUTURE }}'
+              printf '%s\n' 'MAX_TIMED_EVENTS=${{ secrets.MAX_TIMED_EVENTS }}'
+              printf '%s\n' 'MAX_ALL_DAY_EVENTS=${{ secrets.MAX_ALL_DAY_EVENTS }}'
+              printf '%s\n' 'SYNC_INTERVAL_MS=${{ secrets.SYNC_INTERVAL_MS }}'
+              printf '%s\n' 'VITE_ALLOWED_HOSTS=${{ secrets.VITE_ALLOWED_HOSTS }}'
+              printf '%s\n' 'DATABASE_PATH=${{ secrets.DATABASE_PATH }}'
+            } > .env
+            docker compose up -d --build --remove-orphans
+          "
+
+  reset_database:
+    if: github.event_name == 'workflow_dispatch' && inputs.reset_database == true && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install SSH tools
+        run: sudo apt-get update && sudo apt-get install -y openssh-client
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Validate required SSH secrets
+        run: |
+          missing=0
+          if [ -z "${{ secrets.SSH_HOST }}" ]; then echo "Missing required secret: SSH_HOST"; missing=1; fi
+          if [ -z "${{ secrets.SSH_USER }}" ]; then echo "Missing required secret: SSH_USER"; missing=1; fi
+          if [ -z "${{ secrets.SSH_PORT }}" ]; then echo "Missing required secret: SSH_PORT"; missing=1; fi
+          if [ -z "${{ secrets.DEPLOY_DIR }}" ]; then echo "Missing required secret: DEPLOY_DIR"; missing=1; fi
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
+      - name: Add host key
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          touch ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          ssh-keyscan -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts || true
+
+      - name: Reset SQLite and restart app
+        run: |
+          ssh ${{ env.SSH_OPTIONS }} -p "${{ secrets.SSH_PORT }}" "${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}" "
+            set -euo pipefail
+            cd '${{ secrets.DEPLOY_DIR }}'
+            docker compose up -d kalender-opa
+            docker compose exec -T kalender-opa sh -lc 'rm -f /data/kalender-opa.sqlite'
+            docker compose up -d --build --remove-orphans kalender-opa
+          "

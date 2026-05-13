@@ -4,8 +4,10 @@ services:
     container_name: kalender-opa
     env_file:
       - .env
+    environment:
+      PORT: "41773"
     ports:
-      - "3000:3000"
+      - "8082:41773"
     volumes:
       - kalender-opa-data:/data
     restart: unless-stopped
